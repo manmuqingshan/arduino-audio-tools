@@ -11,8 +11,8 @@ namespace audio_tools {
 /**
  * @brief  Logic to detemine the mime type from the content.
  * By default the following mime types are supported (audio/aac, audio/mpeg,
- * audio/vnd.wave, audio/ogg, audio/flac). You can register your own custom
- * detection logic to cover additional file types.
+ * audio/vnd.wave, audio/ogg, audio/flac, audio/ac3, audio/eac3). You can
+ * register your own custom detection logic to cover additional file types.
  *
  * Please note that the distinction between mp3 and aac is difficult and might
  * fail in some cases. FLAC detection supports both native FLAC and OGG FLAC
@@ -38,6 +38,8 @@ class MimeDetector : public MimeSource {
       setCheck("audio/prs.sid", checkSID);
       setCheck("audio/m4a", checkM4A);
       setCheck("audio/dsf", checkDSF);
+      setCheck("audio/eac3", checkEAC3);
+      setCheck("audio/ac3", checkAC3);
       setCheck("audio/mpeg", checkMP3Ext);
       setCheck("audio/aac", checkAACExt);
     }
@@ -246,6 +248,41 @@ class MimeDetector : public MimeSource {
   static bool checkDSF(uint8_t* start, size_t len) {
     if (len < 4) return false;
     return memcmp(start, "DSD ", 4) == 0;
+  }
+
+  /**
+   * @brief Checks for AC-3 (Dolby Digital) format
+   *
+   * AC-3 elementary streams start with a 16 bit sync word (0x0B77)
+   * followed by the bitstream id (bsid) field, which is <= 8 for
+   * standard AC-3 (E-AC-3 uses a higher bsid, see checkEAC3()).
+   *
+   * @param start Pointer to the data buffer
+   * @param len Length of the data buffer
+   * @return true if AC-3 format is detected, false otherwise
+   */
+  static bool checkAC3(uint8_t* start, size_t len) {
+    if (len < 7) return false;
+    if (start[0] != 0x0B || start[1] != 0x77) return false;
+    uint8_t bsid = start[5] >> 3;
+    return bsid <= 8;
+  }
+
+  /**
+   * @brief Checks for Enhanced AC-3 (E-AC-3 / Dolby Digital Plus) format
+   *
+   * E-AC-3 elementary streams start with the same 16 bit sync word
+   * (0x0B77) as AC-3, but use a bitstream id (bsid) between 11 and 16.
+   *
+   * @param start Pointer to the data buffer
+   * @param len Length of the data buffer
+   * @return true if E-AC-3 format is detected, false otherwise
+   */
+  static bool checkEAC3(uint8_t* start, size_t len) {
+    if (len < 7) return false;
+    if (start[0] != 0x0B || start[1] != 0x77) return false;
+    uint8_t bsid = start[5] >> 3;
+    return bsid >= 11 && bsid <= 16;
   }
 
   /// Commodore 64 SID File

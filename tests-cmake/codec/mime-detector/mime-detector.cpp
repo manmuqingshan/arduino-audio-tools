@@ -57,6 +57,15 @@ static std::vector<uint8_t> buildMP3Stream(int frames) {
   return out;
 }
 
+// Builds a synthetic AC-3 frame: sync word 0x0B77 followed by a bsid field.
+static std::vector<uint8_t> buildAC3Frame(uint8_t bsid, int frameLength = 128) {
+  std::vector<uint8_t> f(frameLength, 0);
+  f[0] = 0x0B;
+  f[1] = 0x77;
+  f[5] = (bsid & 0x1F) << 3;
+  return f;
+}
+
 void setup() {
   Serial.begin(115200);
   AudioToolsLogger.begin(Serial, AudioToolsLogLevel::Warning);
@@ -93,6 +102,42 @@ void setup() {
     auto mp3 = buildMP3Stream(4);
     detector.write(mp3.data(), mp3.size());
     assert(strcmp(detector.mime(), "audio/mpeg") == 0);
+  }
+
+  // 5) A synthetic AC-3 frame must be recognized as audio/ac3 and NOT as
+  // E-AC-3, AAC or MP3
+  {
+    auto ac3 = buildAC3Frame(8);  // bsid=8 -> standard AC-3
+    assert(MimeDetector::checkAC3(ac3.data(), ac3.size()) == true);
+    assert(MimeDetector::checkEAC3(ac3.data(), ac3.size()) == false);
+    assert(MimeDetector::checkAACExt(ac3.data(), ac3.size()) == false);
+    assert(MimeDetector::checkMP3Ext(ac3.data(), ac3.size()) == false);
+  }
+
+  // 6) A synthetic E-AC-3 frame must be recognized as audio/eac3 and NOT as
+  // AC-3
+  {
+    auto eac3 = buildAC3Frame(16);  // bsid=16 -> E-AC-3
+    assert(MimeDetector::checkEAC3(eac3.data(), eac3.size()) == true);
+    assert(MimeDetector::checkAC3(eac3.data(), eac3.size()) == false);
+  }
+
+  // 7) End-to-end MimeDetector: AC-3 stream -> audio/ac3
+  {
+    MimeDetector detector;
+    detector.begin();
+    auto ac3 = buildAC3Frame(8);
+    detector.write(ac3.data(), ac3.size());
+    assert(strcmp(detector.mime(), "audio/ac3") == 0);
+  }
+
+  // 8) End-to-end MimeDetector: E-AC-3 stream -> audio/eac3
+  {
+    MimeDetector detector;
+    detector.begin();
+    auto eac3 = buildAC3Frame(16);
+    detector.write(eac3.data(), eac3.size());
+    assert(strcmp(detector.mime(), "audio/eac3") == 0);
   }
 
   Serial.println("All MimeDetector aac/mp3 discrimination tests passed");
